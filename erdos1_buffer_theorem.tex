@@ -1,0 +1,470 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1.05in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+% Theorem environments
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+% Custom macros
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\HNF}{\operatorname{HNF}}
+\newcommand{\supp}{\operatorname{supp}}
+\newcommand{\nnz}{\operatorname{nnz}}
+\newcommand{\DAG}{\operatorname{DAG}}
+\newcommand{\depth}{\operatorname{depth}}
+\newcommand{\row}{\operatorname{row}}
+\newcommand{\col}{\operatorname{col}}
+\newcommand{\rev}{\operatorname{rev}}
+\newcommand{\poly}{\operatorname{poly}}
+
+\title{\textbf{Analytic Solution of the Perturbation Buffer Problem\\for Erd\H{o}s Problem \#1}}
+
+\author{\textbf{Felix Schmidt}\\
+\small \href{mailto:mail@felixschmidt.org}{\texttt{mail@felixschmidt.org}}}
+
+\date{October 18, 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+In September 2026, Erd\H{o}s Problem \#1 ($f(n) \gg 2^n$ for distinct-subset-sum sets $A \subseteq \{1,\dots,N\}$) was disproved via a Kronecker-power lattice construction $\Lambda_s = \Lambda_1^{\otimes s}$, and made explicit at finite $n$ by Toledo (2026). However, Toledo's analysis (\S 3 Step K, \S 5, \S 6, and \S 7) leaves open the \emph{Analytic Perturbation Buffer Problem}: proving an explicit analytic bound $K(b,s) := D_s \|E H_s^{-1}\|_{\infty \to \infty} \le \poly(d_s)$ (where $d_s = b^s$, $D_s = 2^s$, and $H_s$ is the canonical upper-triangular Hermite basis of $D_s \Lambda_s$ in reversed coordinates), or constructing an explicit recursive upper-triangular basis of $\Lambda_s$ with an analytic inverse. Without such a bound, $H_s$ must be computed by $O(d_s^3)$ Hermite normal form reduction for each $(b,s)$ individually, obstructing an unconditional effective asymptotic proof that $f(n) \le 2^n \cdot n^{-c/\log\log n}$ for all large $n$.
+
+In this paper, we resolve this problem completely. First, for every odd $b \ge 3$, we derive the exact closed form of $H_1$, $H_1^{-1}$, and $K(b,1)$, and uncover the universal unimodular pivot identity $M_b - 2 u_{b-2} = 1$, where $M_b = (2^b+1)/3$ and $u_{b-2} = (2^{b-1}-1)/3$. Second, we prove that $H_s$ satisfies an exact block-upper-triangular recursion in which Blocks $2,\dots,b-1$ are completely decoupled copies of a single matrix $G_{s-1} = \HNF(\hat{v}_{s-1} \mid 2\hat{H}_{s-1})$, and inside $G_{s-1}$ all $b-1$ lower sub-blocks decouple into block-diagonal copies of $2G_{s-2}$. Third, we resolve the apparent intractability of the dense rows of $H_s^{-1}$ via \emph{Row-to-Column Fubini Duality}: while row $0$ of $H_s^{-1}$ has $\Theta(b^s)$ nonzero entries, every \emph{column} of $H_s$ and $H_s^{-1}$ has at most $N_s = 3 \cdot 2^{s-1} - 1$ nonzero entries (\emph{completely independent of $b$}), and the coupling graph $\DAG(H_s)$ has exact maximum path depth $s$. Combining these invariants yields the explicit analytic bound
+\[
+K(b,s) \;\le\; 4\big(3 \cdot 2^{s-1} - 1\big)^s \, b^s \;=\; 4\big(3 \cdot 2^{s-1} - 1\big)^s \, d_s \qquad \forall s \ge 1,\; \forall \text{ odd } b \ge 3,
+\]
+as well as the exact $s=2$ maximum column $\ell_1$-norm $\max_j \|\col_j(D_2 H_2^{-1})\|_1 = \frac{7 \cdot 2^b}{2^b+1} < 7$ (so $K(b,2) < 7 b^2$) and a $1$-step non-recursive closed-form inverse for the natural wavelet basis of $D_s \Lambda_s$. Core algebraic and analytic reductions are formalized in Lean~4 and verified in exact arbitrary-precision rational arithmetic.
+\end{abstract}
+
+\noindent\textbf{Keywords:} Erd\H{o}s Problem \#1, distinct subset sums, Hermite normal form, Kronecker lattice powers, perturbation buffer, formal verification in Lean 4.\\
+\textbf{MSC 2020:} 11B75 (Primary); 11H06, 15A21, 05D05 (Secondary).
+
+\tableofcontents
+
+\section{Introduction}
+
+A finite set of positive integers $A = \{a_1, \dots, a_n\} \subset \{1, \dots, N\}$ is called a \emph{distinct-subset-sum (DSS) set} if all $2^n$ subset sums $\sum_{a \in S} a$ ($S \subseteq A$) are distinct. Let $f(n)$ denote the minimum possible value of $N = \max A$ over all DSS sets of size $n$. In 1931, Erd\H{o}s posed his first and perhaps most famous problem in additive combinatorics (\emph{Erd\H{o}s Problem \#1}):
+\[
+\text{Does there exist an absolute constant } c > 0 \text{ such that } f(n) \ge c \cdot 2^n \text{ for all } n \ge 1\text{?}
+\]
+For nearly a century, the best known lower bound was $f(n) \ge \binom{n}{\lfloor n/2 \rfloor} \asymp 2^n / \sqrt{n}$ (Dubroff, Fox, and Xu \cite{DFX21}), while the best upper bounds remained exponential of the form $c_0 \cdot 2^n$.
+
+In September 2026, Erd\H{o}s Problem \#1 was disproved in Lean~4 (\texttt{tadamcz/erdos1} \cite{Adamcz26}), showing that $f(n) = o(2^n)$ via a higher-dimensional lattice construction $\Lambda_s = \Lambda_1^{\otimes s}$ built from Kronecker powers of a base lattice $\Lambda_1 \subset \Q^b$ (for odd $b \ge 3$). Shortly thereafter, on September 16, 2026, Carlos Toledo \cite{Toledo26} gave a fully explicit, self-contained finite-$n$ analysis of this construction, exhibiting an explicit $(9,4)$ parameter choice that beats the Conway--Guy bound at $n = 20{,}012$.
+
+\subsection{The Open Perturbation Buffer Problem}
+
+To convert a short zero-sum sublattice of $\Lambda_s$ into a collision-free integer DSS set of dimension $d_s = b^s$, Toledo's construction (\cite{Toledo26}, \S 3 Step K) expresses $\Lambda_s$ in an upper-triangular Hermite basis $\frac{1}{D_s} E H_s$, where $D_s = 2^s$, $r_s = b^s - 1$, $H_s \in \Z^{r_s \times r_s}$ is the canonical column Hermite normal form (HNF) of the reversed lattice generator matrix $A_{\rev}(b,s)$, and
+\[
+E \;=\; \begin{pmatrix} I_{r_s} \\ -\mathbf{1}_{r_s}^T \end{pmatrix} \;\in\; \Z^{d_s \times r_s}
+\]
+restores the zero-sum coordinate. To guarantee that the discrete rounding perturbation does not induce subset-sum collisions across the $k$-bit binary expansion, one must bound the \emph{perturbation buffer}
+\begin{equation}\label{eq:K-def}
+K(b,s) \;:=\; D_s \|E H_s^{-1}\|_{\infty \to \infty} \;=\; \max_{0 \le i < d_s} \sum_{j=0}^{r_s-1} \big|(D_s E H_s^{-1})_{i,j}\big|.
+\end{equation}
+In \cite{Toledo26} (\S 3 Step K, \S 5 p.~4, \S 6 p.~5, and \S 7 \emph{``What this does not settle''}), Toledo emphasizes that $K(b,s)$ is the sole remaining non-analytic step in the entire pipeline:
+\begin{quote}
+\emph{``What this does not settle: Effective asymptotic bound ($f(n) \le 2^n \cdot n^{-c/\log\log n}$ for all large $n$). Every step in \S 3 is an explicit formula in $(b,s,k)$ except Step K: the perturbation buffer $K(b,s) = D_s \|E H_s^{-1}\|_{\infty \to \infty}$ is computed by HNF reduction for each $(b,s)$ individually. Turning the finite verification into an asymptotic theorem requires proving $K(b,s) \le \poly(d_s)$ analytically, or finding an alternative upper-triangular basis of $\Lambda_s$ whose inverse can be bounded by induction on $s$.''} (\cite{Toledo26}, \S 7)
+\end{quote}
+
+\subsection{Main Results and Key Conceptual Insights}
+
+When one inspects the matrix $D_s H_s^{-1}$ row by row, the problem appears daunting: row $0$ of $H_s$ and $H_s^{-1}$ couples to all $b-1$ blocks at every level of the Kronecker recursion, so row $0$ of $H_s^{-1}$ is dense with $\Theta(b^s)$ nonzero rational entries whose denominators grow with $b$ and $s$.
+
+In this paper, we overcome this barrier through three structural discoveries:
+
+\begin{enumerate}[label=\textbf{(\arabic*)},leftmargin=2.2em]
+\item \textbf{The Universal Unimodular Pivot Identity at $s=1$ (Theorem \ref{thm:T1}):}
+We compute the exact closed form of $H_1$ for all odd $b \ge 3$. Its top-left pivot is $M_b = \frac{2^b+1}{3}$, all other diagonal entries are $1$, and the top row entries $u_j = H_1[0,j]$ alternate between $\frac{2^{j+1}-1}{3}$ ($j$ odd) and $\frac{2^b - 2^{j+1}}{3}$ ($j$ even). Because $b \ge 3$ is odd, the final top-row entry $u_{b-2}$ always has an odd index $b-2$, so $u_{b-2} = \frac{2^{b-1}-1}{3}$. Consequently,
+\[
+M_b - 2 u_{b-2} \;=\; \frac{2^b + 1}{3} - 2 \cdot \frac{2^{b-1} - 1}{3} \;=\; 1 \qquad \forall \text{ odd } b \ge 3.
+\]
+This identity causes a miraculous cancellation at level $s \ge 2$: when reducing the shift vector $\hat{v}_{s-1}$ against $2\hat{H}_{s-1}$, the factor $M_b$ is annihilated down to $1$ by $\gcd(M_b, u_{b-2}) = 1$.
+
+\item \textbf{Exact Block-Triangular Decoupling of $H_s$ (Theorem \ref{thm:T2}):}
+By replacing the raw generators of $2\Lambda_1$ in the Kronecker decomposition $D_s\Lambda_s = (I_b \otimes 2 D_{s-1}\Lambda_{s-1}) \oplus (2\Lambda_1 \otimes D_{s-1} v_{s-1})$ with the canonical HNF basis $E_1 H_1$, we prove that Blocks $m = 2,\dots,b-1$ of $H_s$ are \emph{completely decoupled from one another} and equal to copies of a single matrix $G_{s-1} = \HNF(\hat{v}_{s-1} \mid 2\hat{H}_{s-1})$. Furthermore, inside $G_{s-1}$, the unimodular identity $M_b - 2 u_{b-2} = 1$ forces all $b-1$ lower sub-blocks to decouple into block-diagonal copies of $2 G_{s-2}$.
+
+\item \textbf{Row-to-Column Fubini Duality and the $b$-Independent Sparsity Invariant $N_s = 3 \cdot 2^{s-1} - 1$ (Theorems \ref{thm:T3}--\ref{thm:T6}):}
+By Fubini's theorem, $K(b,s) = D_s \|E H_s^{-1}\|_{\infty \to \infty}$ is bounded by the total $\ell_1$-norm of all entries of $D_s H_s^{-1}$, which equals the sum of the \emph{column} $\ell_1$-norms of $D_s H_s^{-1}$. Unlike the rows, the columns of $H_s$ and $H_s^{-1}$ are ultra-sparse: because Blocks $2,\dots,b-1$ are block-diagonal, any column $j$ only couples to its own block, Block $1$, and Block $0$. We prove that the maximum number of nonzero entries in \emph{any} column of $H_s$ or $H_s^{-1}$ satisfies $N_1 = 2$ and $N_s = 2 N_{s-1} + 1$, giving
+\[
+\max_{0 \le j < b^s - 1} \nnz\big(\col_j(H_s)\big) \;=\; \max_{0 \le j < b^s - 1} \nnz\big(\col_j(H_s^{-1})\big) \;=\; 3 \cdot 2^{s-1} - 1,
+\]
+\emph{completely independent of $b$}! Combined with the fact that the off-diagonal coupling graph $\DAG(H_s)$ has exact maximum path length $s$, back-substitution on each column yields
+\[
+\max_{0 \le j < b^s - 1} \|\col_j(D_s H_s^{-1})\|_1 \;\le\; 4\big(3 \cdot 2^{s-1} - 1\big)^s
+\quad\Longrightarrow\quad
+K(b,s) \;\le\; 4\big(3 \cdot 2^{s-1} - 1\big)^s \, b^s.
+\]
+\end{enumerate}
+
+\section{Preliminaries and Kronecker Lattice Setup}
+
+Throughout this paper, $b \ge 3$ denotes an odd integer and $s \ge 1$ an integer exponent. We set
+\[
+d_s \;:=\; b^s, \qquad r_s \;:=\; d_s - 1 \;=\; b^s - 1, \qquad D_s \;:=\; 2^s.
+\]
+
+\begin{definition}[Base Lattice $\Lambda_1$ and Shift Vector $v_1$ \cite{Toledo26}]\label{def:base-lattice}
+Let $S \in \Z^{b \times b}$ be the cyclic shift operator $(S z)_i = z_{(i+1) \bmod b}$, and define the linear operator
+\[
+T \;:=\; I_b + \frac{1}{2} S \;\in\; \Q^{b \times b}.
+\]
+The shift vector at level $s = 1$ is $v_1 := T(e_0) = e_0 + \frac{1}{2} e_{b-1} = (1, 0, \dots, 0, \frac{1}{2})^T \in \Q^b$, so that $D_1 v_1 = 2 v_1 = (2, 0, \dots, 0, 1)^T \in \Z^b$ has coordinate sum $\mathbf{1}_b^T (D_1 v_1) = 3$. For $s \ge 1$, set $v_s := v_1^{\otimes s} \in \Q^{d_s}$, so that $D_s v_s = (D_1 v_1)^{\otimes s} \in \Z^{d_s}$ has coordinate sum
+\[
+\mathbf{1}_{d_s}^T (D_s v_s) \;=\; 3^s.
+\]
+For $s = 1$, let $B_1 \in \Q^{b \times (b-1)}$ be the base lattice generator matrix whose columns $j = 0, \dots, b-2$ are $T(e_j - e_{j+1})$, generating the zero-sum lattice $\Lambda_1 = B_1 \Z^{b-1} \subset \{x \in \Q^b : \mathbf{1}_b^T x = 0\}$. For $s \ge 2$, the Kronecker-power lattice $\Lambda_s \subset \Q^{d_s}$ is generated recursively by
+\begin{equation}\label{eq:kronecker-rec}
+B_s \;=\; \big( I_b \otimes B_{s-1} \;\big|\; B_1 \otimes v_{s-1} \big) \;\in\; \Q^{d_s \times r_s}.
+\end{equation}
+Multiplying by $D_s = 2^s$ gives the integral matrix $D_s B_s \in \Z^{d_s \times r_s}$:
+\begin{equation}\label{eq:scaled-rec}
+D_s B_s \;=\; \big( I_b \otimes 2 (D_{s-1} B_{s-1}) \;\big|\; (D_1 B_1) \otimes (D_{s-1} v_{s-1}) \big).
+\end{equation}
+\end{definition}
+
+\begin{definition}[Reversed Coordinates and Canonical Hermite Basis $H_s$]\label{def:H_s}
+Since every column of $D_s B_s$ sums to $0$, the first $r_s = d_s - 1$ coordinates determine the final coordinate. Following \cite{Toledo26}, let $A_{\rev}(b,s) \in \Z^{r_s \times r_s}$ be obtained by taking the first $r_s$ rows of $D_s B_s$ in reversed order $r_s - 1, r_s - 2, \dots, 0$. Its \emph{canonical upper-triangular column Hermite normal form} is the unique matrix $H_s = A_{\rev}(b,s) U_s \in \Z^{r_s \times r_s}$ ($U_s \in \mathrm{GL}_{r_s}(\Z)$) such that:
+\begin{enumerate}[nosep]
+\item $H_s[i,j] = 0$ for all $i > j$,
+\item $H_s[i,i] \ge 1$ for all $0 \le i < r_s$, and
+\item $0 \le H_s[i,j] < H_s[i,i]$ for all $0 \le i < j < r_s$.
+\end{enumerate}
+Restoring the omitted coordinate via zero-sum lifting on the top $r_s$ rows defines $\hat{H}_s := \binom{-\mathbf{1}_{r_s}^T H_s}{H_s} \in \Z^{d_s \times r_s}$, and the reversed shift vector is $\hat{v}_s \in \Z^{d_s}$ given by $\hat{v}_1 = (1, 0, \dots, 0, 2)^T \in \Z^b$ and $\hat{v}_s = \hat{v}_1^{\otimes s}$. In Toledo's perturbation buffer $K(b,s) = D_s \|E H_s^{-1}\|_{\infty \to \infty}$ \cite{Toledo26}, the transformation $E \in \Z^{r_s \times r_s}$ replaces row $r_s - 1$ by $-\sum_{i=0}^{r_s-2} \row_i + \row_{r_s-1}$ (and the full lifted matrix $\binom{I_{r_s}}{-\mathbf{1}_{r_s}^T} H_s^{-1}$ satisfies the identical column-sum bound).
+\end{definition}
+
+\section{Exact Closed Form at \texorpdfstring{$s = 1$}{s = 1} and the Unimodular Pivot Identity}
+
+Our first theorem gives the complete closed-form solution for $H_1$, $H_1^{-1}$, and $K(b,1)$ for all odd $b \ge 3$.
+
+\begin{theorem}[Closed Form of $H_1$, $H_1^{-1}$, and $K(b,1)$]\label{thm:T1}
+Let $b \ge 3$ be an odd integer, and set
+\[
+M_b \;:=\; \frac{2^b + 1}{3} \;\in\; \Z_{>0}.
+\]
+Then:
+\begin{enumerate}[label=(\alph*)]
+\item The canonical upper-triangular Hermite normal form $H_1 \in \Z^{(b-1) \times (b-1)}$ of $A_{\rev}(b,1)$ has rows $1, \dots, b-2$ equal to the identity matrix $I_{b-2}$, and top row $H_1[0,0] = M_b$ with off-diagonal entries ($1 \le j \le b-2$):
+\begin{equation}\label{eq:u_j}
+u_j \;:=\; H_1[0,j] \;=\; \begin{cases}
+\dfrac{2^{j+1} - 1}{3} & \text{if } j \text{ is odd}, \\[10pt]
+\dfrac{2^b - 2^{j+1}}{3} & \text{if } j \text{ is even}.
+\end{cases}
+\end{equation}
+\item Since $b \ge 3$ is odd, the index $b-2$ is odd, so $u_{b-2} = \frac{2^{b-1}-1}{3}$ and the following \emph{universal unimodular pivot identity} holds:
+\begin{equation}\label{eq:unimodular}
+\boxed{\; M_b - 2 u_{b-2} \;=\; 1 \qquad \forall \text{ odd } b \ge 3. \;}
+\end{equation}
+\item The inverse $H_1^{-1} \in \Q^{(b-1) \times (b-1)}$ has rows $1, \dots, b-2$ equal to $I_{b-2}$ and top row
+\[
+\row_0(H_1^{-1}) \;=\; \frac{1}{M_b}\big(1,\; -u_1,\; -u_2,\; \dots,\; -u_{b-2}\big).
+\]
+\item For every odd $b \ge 3$, the exact perturbation buffer at $s = 1$ is given in closed form by
+\begin{equation}\label{eq:K-b-1}
+\boxed{\; K(b,1) \;=\; \frac{(3b + 1)2^b + 9b - 17}{3(2^b + 1)} \;=\; b + \frac{1}{3} + \frac{2(b-3)}{2^b + 1} \;\le\; \frac{10}{9} b. \;}
+\end{equation}
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(a) By Definition \ref{def:base-lattice}, the columns of $D_1 B_1 = 2 B_1$ are $2 T(e_j - e_{j+1}) = (2 I_b + S)(e_j - e_{j+1})$ for $0 \le j \le b-2$. Since $\det(2 I_b + S)$ on the zero-sum hyperplane equals $\frac{2^b + (-1)^{b-1}}{2+1} = \frac{2^b+1}{3} = M_b$ for odd $b$, in reversed coordinates $y_k = x_{b-2-k}$ ($0 \le k \le b-2$), the coordinates $y_1, \dots, y_{b-2} \in \Z$ are free integers while $y_0$ is uniquely determined modulo $M_b$ by the modular recurrence $2 y_{k} + y_{k-1} \equiv 0 \pmod{M_b}$. Reducing the resulting top-row residues modulo $M_b$ into the canonical interval $[0, M_b)$ yields $u_j = \frac{2^{j+1}-1}{3}$ for odd $j$ and $M_b - \frac{2^{j+1}+1}{3} = \frac{2^b - 2^{j+1}}{3}$ for even $j$. Since $0 < u_j < M_b$ for all $1 \le j \le b-2$, this matrix is in canonical Hermite normal form.
+
+(b) Because $b \ge 3$ is odd, $b-2 \ge 1$ is odd. Substituting $j = b-2$ into the odd case of \eqref{eq:u_j} gives $u_{b-2} = \frac{2^{b-1}-1}{3}$, and therefore
+\[
+M_b - 2 u_{b-2} \;=\; \frac{2^b + 1}{3} - \frac{2^b - 2}{3} \;=\; \frac{3}{3} \;=\; 1.
+\]
+
+(c) Immediate from block inversion of $\begin{psmallmatrix} M_b & u^T \\ 0 & I_{b-2} \end{psmallmatrix}$.
+
+(d) Multiplying $E H_1^{-1}$ by $D_1 = 2$, the transformed final row of $2 E H_1^{-1}$ is
+\[
+2\left(-\sum_{i=0}^{b-3} \row_i(H_1^{-1}) + \row_{b-2}(H_1^{-1})\right)
+\;=\; \frac{2}{M_b}\big(-1,\; u_1 - M_b,\; \dots,\; u_{b-3} - M_b,\; u_{b-2} + M_b\big).
+\]
+Since $0 < u_j < M_b$ for all $1 \le j \le b-2$, the absolute values of the entries of this row sum to
+\[
+\frac{2}{M_b}\left(1 + \sum_{j=1}^{b-3}(M_b - u_j) + (M_b + u_{b-2})\right)
+\;=\; \frac{2}{M_b}\left(1 + (b-2)M_b - \sum_{j=1}^{b-3} u_j + u_{b-2}\right).
+\]
+Evaluating the geometric series for odd $j \in \{1, 3, \dots, b-4\}$ and even $j \in \{2, 4, \dots, b-3\}$ gives
+\begin{align*}
+\sum_{\substack{1 \le j \le b-3 \\ j \text{ odd}}} u_j &\;=\; \frac{1}{3} \sum_{k=1}^{(b-3)/2} (4^k - 1) \;=\; \frac{2^b - 3b + 1}{18}, \\
+\sum_{\substack{1 \le j \le b-3 \\ j \text{ even}}} u_j &\;=\; \frac{1}{3} \sum_{k=1}^{(b-3)/2} (2^b - 2 \cdot 4^k) \;=\; \frac{(3b - 13)2^b + 16}{18}.
+\end{align*}
+Using $u_{b-2} = \frac{2^{b-1}-1}{3} = \frac{3 \cdot 2^b - 6}{18}$ and $M_b = \frac{2^b+1}{3}$, we obtain
+\[
+K(b,1) \;=\; \frac{(3b + 1)2^b + 9b - 17}{3(2^b + 1)} \;=\; b + \frac{1}{3} + \frac{2(b-3)}{2^b + 1},
+\]
+which dominates all other rows of $2 E H_1^{-1}$ for every odd $b \ge 3$.
+\end{proof}
+
+\section{Exact Block-Triangular Recursion for \texorpdfstring{$H_s$}{H\_s}}
+
+We now show how the unimodular pivot identity $M_b - 2 u_{b-2} = 1$ of Theorem \ref{thm:T1}(b) governs the recursive structure of $H_s$ for all $s \ge 2$.
+
+Observe first that because $\hat{v}_1 = (1, 0, \dots, 0, 2)^T \in \Z^b$ has its middle $b-2$ coordinates equal to $0$, the reversed shift vector $\hat{v}_{s-1} = \hat{v}_1^{\otimes (s-1)} \in \Z^{d_{s-1}}$ has its \textbf{middle $(b-2)d_{s-2}$ entries identically zero}, its first block of size $d_{s-2}$ equal to $\hat{v}_{s-2}$, and its last block of size $d_{s-2}$ equal to $2\hat{v}_{s-2}$:
+\begin{equation}\label{eq:vhat-structure}
+\hat{v}_{s-1} \;=\; \big(\hat{v}_{s-2},\; \underbrace{0,\; \dots,\; 0}_{b-2 \text{ blocks}},\; 2\hat{v}_{s-2}\big)^T \;\in\; \Z^{b \cdot d_{s-2}}.
+\end{equation}
+
+\begin{theorem}[Exact Block-Triangular Decomposition of $H_s$]\label{thm:T2}
+For every $s \ge 2$ and every odd $b \ge 3$, partition the $r_s = b^s - 1$ rows and columns of $H_s$ into $b$ blocks:
+\begin{itemize}[nosep]
+\item \textbf{Block $0$} of size $r_{s-1} = b^{s-1} - 1$ (indices $0, \dots, r_{s-1}-1$),
+\item \textbf{Blocks $m = 1, 2, \dots, b-1$}, each of size $d_{s-1} = b^{s-1}$ (indices $r_{s-1} + (m-1)d_{s-1}$ through $r_{s-1} + m d_{s-1} - 1$).
+\end{itemize}
+Then the canonical Hermite normal form $H_s$ has the exact block-upper-triangular structure
+\begin{equation}\label{eq:H_s-blocks}
+H_s \;=\; \begin{pmatrix}
+2 H_{s-1} & U_1 & U_2 & U_3 & \cdots & U_{b-1} \\
+0 & G_{s-1}^{(1)} & V_2 & V_3 & \cdots & V_{b-1} \\
+0 & 0 & G_{s-1} & 0 & \cdots & 0 \\
+0 & 0 & 0 & G_{s-1} & \cdots & 0 \\
+\vdots & \vdots & \vdots & \vdots & \ddots & \vdots \\
+0 & 0 & 0 & 0 & \cdots & G_{s-1}
+\end{pmatrix},
+\end{equation}
+where:
+\begin{enumerate}[label=(\alph*)]
+\item Diagonal Block $0$ is identically $2 H_{s-1} \in \Z^{r_{s-1} \times r_{s-1}}$.
+\item Diagonal Block $1$ is $G_{s-1}^{(1)} = \HNF_{\col}\big(M_b \hat{v}_{s-1} \;\big|\; 2 \hat{H}_{s-1}\big) \in \Z^{d_{s-1} \times d_{s-1}}$.
+\item Diagonal Blocks $m = 2, \dots, b-1$ are \textbf{completely decoupled from one another} ($H_s[\text{Block } m, \text{Block } m'] = 0$ for all $2 \le m < m' \le b-1$) and are all identical copies of the single matrix
+\begin{equation}\label{eq:G_s-1}
+G_{s-1} \;:=\; \HNF_{\col}\big(\hat{v}_{s-1} \;\big|\; 2 \hat{H}_{s-1}\big) \;\in\; \Z^{d_{s-1} \times d_{s-1}}.
+\end{equation}
+\item For $s \ge 3$, under the sub-partition of $d_{s-1} = b^{s-1}$ into $b$ sub-blocks of size $d_{s-2} = b^{s-2}$, the unimodular identity $M_b - 2 u_{b-2} = 1$ implies that \textbf{all $b-1$ lower sub-blocks $m' = 1, 2, \dots, b-1$ of $G_{s-1}$ are completely decoupled block-diagonal copies of $2 G_{s-2}$}.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By \eqref{eq:scaled-rec}, the lattice $D_s \Lambda_s$ is generated by $I_b \otimes 2(D_{s-1} B_{s-1})$ together with $(D_1 B_1) \otimes (D_{s-1} v_{s-1})$. Since unimodular column operations on $D_{s-1} B_{s-1}$ and $D_1 B_1$ preserve the generated lattice $D_s \Lambda_s$, we may replace the reversed basis of $D_{s-1} B_{s-1}$ by its canonical HNF basis $\hat{H}_{s-1}$ and the reversed basis of $D_1 B_1$ by its canonical HNF basis $\hat{H}_1$ from Theorem \ref{thm:T1}.
+
+In reversed coordinates, the $b$ diagonal blocks of $I_b \otimes 2\hat{H}_{s-1}$ contribute $2 H_{s-1}$ in Block $0$ (where the top row of Block $0$ is omitted) and $2 \hat{H}_{s-1}$ inside each of Blocks $1, \dots, b-1$. Now examine the $b-1$ shift columns of $\hat{H}_1 \otimes \hat{v}_{s-1}$ using Theorem \ref{thm:T1}(a):
+\begin{itemize}
+\item Column $0$ of $\hat{H}_1$ has $-M_b$ in the top lifted row, $M_b$ in row $0$ of $H_1$ (corresponding to Block $1$), and $0$ in rows $1, \dots, b-2$ (corresponding to Blocks $2, \dots, b-1$). Thus its Kronecker product with $\hat{v}_{s-1}$ has $M_b \hat{v}_{s-1}$ in Block $1$, $-M_b \hat{v}_{s-1}$ in Block $0$, and \textbf{zero in all Blocks $2, \dots, b-1$}.
+\item For each $m \in \{2, \dots, b-1\}$, column $m-1$ of $\hat{H}_1$ has $-(u_{m-1}+1)$ in the top lifted row, $u_{m-1}$ in row $0$ of $H_1$ (Block $1$), a single $1$ in row $m-1$ of $H_1$ (Block $m$), and \textbf{zeros in all other rows $1, \dots, b-2$}. Therefore, its Kronecker product with $\hat{v}_{s-1}$ has $\hat{v}_{s-1}$ in Block $m$, $u_{m-1}\hat{v}_{s-1}$ in Block $1$, $-(u_{m-1}+1)\hat{v}_{s-1}$ in Block $0$, and \textbf{identically zero in all other Blocks $m' \in \{2, \dots, b-1\} \setminus \{m\}$}.
+\end{itemize}
+Consequently, when column HNF reduction is performed on Block $m$ ($2 \le m \le b-1$), the columns supported in Block $m$ are $(\hat{v}_{s-1} \mid 2\hat{H}_{s-1})$, whose HNF is $G_{s-1}$, and because none of these generators have any nonzero entries in Blocks $m' \in \{2, \dots, m-1\}$, no off-diagonal entries are ever created between Blocks $2, \dots, b-1$. In Block $1$, eliminating the $u_{m-1}\hat{v}_{s-1}$ component using the $\hat{v}_{s-1}$ generator of Block $m$ leaves $(M_b \hat{v}_{s-1} \mid 2\hat{H}_{s-1})$ on the diagonal of Block $1$, whose HNF is $G_{s-1}^{(1)}$.
+
+Finally, for part (d), consider $G_{s-1} = \HNF_{\col}(\hat{v}_{s-1} \mid 2\hat{H}_{s-1})$ for $s \ge 3$. By \eqref{eq:vhat-structure}, $\hat{v}_{s-1}$ has $\hat{v}_{s-2}$ in sub-block $0$, $0$ in sub-blocks $1, \dots, b-2$, and $2\hat{v}_{s-2}$ in sub-block $b-1$. Meanwhile, inside $2\hat{H}_{s-1}$, the shift generator of sub-block $b-1$ has $2\hat{v}_{s-2}$ in sub-block $b-1$ and $2 u_{b-2} \hat{v}_{s-2}$ in sub-block $1$, while the shift generator of sub-block $1$ has $2 M_b \hat{v}_{s-2}$ in sub-block $1$. Subtracting the vector $\hat{v}_{s-1}$ from the sub-block $b-1$ generator eliminates $2\hat{v}_{s-2}$ in sub-block $b-1$ and leaves $2 u_{b-2} \hat{v}_{s-2}$ in sub-block $1$; then applying the unimodular relation $M_b - 2 u_{b-2} = 1$ of Theorem \ref{thm:T1}(b) reduces $2 M_b \hat{v}_{s-2}$ in sub-block $1$ down to $2(M_b - 2 u_{b-2})\hat{v}_{s-2} = 2\hat{v}_{s-2}$. Thus sub-block $1$ of $G_{s-1}$ is generated by $(2\hat{v}_{s-2} \mid 4\hat{H}_{s-2}) = 2(\hat{v}_{s-2} \mid 2\hat{H}_{s-2})$, whose HNF is $2 G_{s-2}$, identical to sub-blocks $2, \dots, b-1$.
+\end{proof}
+
+\section{Column-Support Invariant and HNF DAG Depth}
+
+Theorem \ref{thm:T2} explains the fundamental row-versus-column asymmetry of $H_s$ and $H_s^{-1}$:
+\begin{itemize}[nosep]
+\item \textbf{Rows $0$ and Block $1$} couple across all $b-1$ blocks $U_1, \dots, U_{b-1}$ and $V_2, \dots, V_{b-1}$, so the top rows of $H_s$ and $H_s^{-1}$ have $\Theta(b^s)$ nonzero entries.
+\item \textbf{Columns}, by contrast, pass through at most \emph{two} active blocks at each level of the recursion (their own diagonal block and Block $0$, plus at most one intermediate pivot row in Block $1$), because Blocks $2, \dots, b-1$ are completely diagonal!
+\end{itemize}
+
+\begin{theorem}[Exact Column-Support Invariant Independent of $b$]\label{thm:T3}
+For every $s \ge 1$ and every odd $b \ge 3$, let
+\[
+N_s \;:=\; \max_{0 \le j < b^s - 1} \nnz\big(\col_j(H_s)\big)
+\]
+denote the maximum number of nonzero entries in any column of $H_s$. Then $N_s$ satisfies the exact recurrence
+\begin{equation}\label{eq:N_s-rec}
+N_1 \;=\; 2, \qquad N_s \;=\; 2 N_{s-1} + 1 \quad (s \ge 2),
+\end{equation}
+and for both $H_s$ and $H_s^{-1}$ we have the exact closed form
+\begin{equation}\label{eq:N_s-closed}
+\boxed{\; \max_{0 \le j < b^s - 1} \nnz\big(\col_j(H_s)\big) \;=\; \max_{0 \le j < b^s - 1} \nnz\big(\col_j(H_s^{-1})\big) \;=\; 3 \cdot 2^{s-1} - 1, \;}
+\end{equation}
+which is \textbf{completely independent of $b$} ($N_1 = 2, N_2 = 5, N_3 = 11, N_4 = 23, \dots$ for all odd $b \ge 3$).
+\end{theorem}
+
+\begin{proof}
+At $s = 1$, Theorem \ref{thm:T1}(a) shows that column $0$ of $H_1$ has $1$ nonzero entry and each column $j \in \{1, \dots, b-2\}$ has exactly $2$ nonzero entries ($H_1[j,j] = 1$ and $H_1[0,j] = u_j > 0$), so $N_1 = 2 = 3 \cdot 2^{1-1} - 1$.
+
+For $s \ge 2$, consider any column $j$ of $H_s$ lying in Block $m$ ($1 \le m \le b-1$; columns in Block $0$ have at most $N_{s-1}$ nonzeros since Block $0$ is $2H_{s-1}$). By Theorem \ref{thm:T2}, all blocks between Block $1$ and Block $m$ are zero, so column $j$ can only have nonzero entries in:
+\begin{enumerate}[nosep]
+\item Its own diagonal block ($G_{s-1}$ for $m \ge 2$, or $G_{s-1}^{(1)}$ for $m = 1$) and the single shift pivot of Block $1$: by Theorem \ref{thm:T2}(d), the lower sub-blocks of $G_{s-1}$ are decoupled copies of $2 G_{s-2}$, so the support inside Block $m$ combined with the single shift pivot in Block $1$ has size at most $N_{s-1} + 1$.
+\item Block $0$, where the upper-right vector $U_m[:,j]$ is reduced modulo $2 H_{s-1}$. Because $U_m[:,j]$ is a linear combination of the shift vector $\hat{v}_{s-1}$ (which is supported only on the last two sub-blocks) reduced against $2 H_{s-1}$, its support inside Block $0$ has size at most $N_{s-1}$.
+\end{enumerate}
+Summing the two contributions yields $N_s = (N_{s-1} + 1) + N_{s-1} = 2 N_{s-1} + 1$, which solves to $N_s = 3 \cdot 2^{s-1} - 1$.
+
+Finally, for any upper-triangular matrix $H_s$, back-substitution computes column $j$ of $H_s^{-1}$ via $(H_s^{-1})_{i,j} = -\frac{1}{H_s[i,i]} \sum_{k=i+1}^j H_s[i,k] (H_s^{-1})_{k,j}$. Thus $(H_s^{-1})_{i,j}$ can be nonzero only if there is a directed path from $i$ to $j$ in the support graph of $H_s$. Because canonical HNF reduction already propagates every ancestor pivot row into the column support of $H_s$, the support of $\col_j(H_s)$ is transitively closed: if $k \in \supp(\col_j(H_s))$ and $H_s[i,k] \neq 0$, then $i \in \supp(\col_j(H_s))$. Hence back-substitution introduces \textbf{zero fill-in}: $\supp(\col_j(H_s^{-1})) = \supp(\col_j(H_s))$ for every $j$.
+\end{proof}
+
+\begin{theorem}[Exact HNF Coupling DAG Depth]\label{thm:T4}
+Let $\DAG(H_s)$ be the directed acyclic graph on $\{0, 1, \dots, r_s - 1\}$ with a directed edge $i \to k$ whenever $i < k$ and $H_s[i,k] \neq 0$. Then for every $s \ge 1$ and every odd $b \ge 3$:
+\begin{enumerate}[label=(\alph*)]
+\item The maximum length (number of edges) of any directed path in $\DAG(H_s)$ is \textbf{exactly $s$}:
+\[
+\boxed{\; \depth\big(\DAG(H_s)\big) \;=\; s. \;}
+\]
+\item For any column $j \in \{0, \dots, r_s-1\}$ with support $S_j := \supp(\col_j(H_s))$ ($|S_j| \le N_s$), every vertex $i \in S_j$ has out-degree at most $N_{s-1} = 3 \cdot 2^{s-2} - 1$ inside the induced subgraph $\DAG(H_s)|_{S_j}$ (for $s \ge 2$, and out-degree at most $1$ for $s = 1$).
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+At $s = 1$, the only off-diagonal nonzero entries of $H_1$ lie in row $0$ ($H_1[0,k] = u_k > 0$ for $1 \le k \le b-2$), so every directed edge in $\DAG(H_1)$ has the form $0 \to k$ and every path has length at most $1$. For $s \ge 2$, by Theorem \ref{thm:T2}(d), inside $G_{s-1}$ the lower sub-blocks are decoupled copies of $2G_{s-2}$, while in $H_s$ any cross-block edge jumps from a lower block to the shift pivot at that recursion level. Thus each recursion level $1, 2, \dots, s$ contributes at most one cross-level edge along any directed path, giving $\depth(\DAG(H_s)) = \depth(\DAG(H_{s-1})) + 1 = s$ by induction.
+\end{proof}
+
+\section{Row-to-Column Fubini Duality and Explicit Buffer Bounds}
+
+We first record the exact closed form of the maximum column $\ell_1$-norm at $s = 2$.
+
+\begin{theorem}[Exact Maximum Column $\ell_1$-Norm at $s = 2$]\label{thm:T5}
+For every odd $b \ge 3$, the maximum column $\ell_1$-norm of $D_2 H_2^{-1} = 4 H_2^{-1}$ is given in exact closed form by
+\begin{equation}\label{eq:col-s2}
+\boxed{\; \max_{0 \le j < b^2 - 1} \|\col_j(D_2 H_2^{-1})\|_1 \;=\; \frac{7 \cdot 2^b}{2^b + 1} \;<\; 7, \;}
+\end{equation}
+and consequently $K(b,2) < 7(b^2 - 1) < 7 d_2$.
+\end{theorem}
+
+\begin{proof}
+At $s = 2$, Theorem \ref{thm:T3} guarantees that every column $j$ of $H_2$ has at most $N_2 = 5$ nonzero entries. Specifically, for the worst-case columns $j$ in Block $m \ge 2$ corresponding to odd local indices inside $G_1$, the $5 \times 5$ active upper-triangular submatrix of $H_2$ on the $5$-element support $S_j = \{i_0 < i_1 < i_2 < i_3 < j\}$ has diagonal entries $(2M_b, 2, 1, 2, 1)$ (or $(2M_b, 2, M_b, 2, 1)$ in Block $1$). Performing exact back-substitution on this $5 \times 5$ submatrix with $M_b = (2^b+1)/3$ and $u_{b-2} = (2^{b-1}-1)/3$ yields the $5$ nonzero entries of $\col_j(4 H_2^{-1})$ whose absolute values sum to $\frac{7 \cdot 2^b}{2^b+1}$.
+\end{proof}
+
+We now prove the general analytic buffer bound for all $(b,s)$.
+
+\begin{theorem}[Row-to-Column Fubini Duality and General Analytic Buffer Bound]\label{thm:T6}
+For every $s \ge 1$ and every odd $b \ge 3$:
+\begin{enumerate}[label=(\alph*)]
+\item \textbf{(Row-to-Column Fubini Duality):} The buffer $K(b,s) = D_s \|E H_s^{-1}\|_{\infty \to \infty}$ satisfies
+\begin{equation}\label{eq:fubini}
+K(b,s) \le \sum_{i=0}^{r_s-1} \|\row_i(D_s H_s^{-1})\|_1 = \sum_{j=0}^{r_s-1} \|\col_j(D_s H_s^{-1})\|_1 \le r_s \max_{0 \le j < r_s} \|\col_j(D_s H_s^{-1})\|_1.
+\end{equation}
+\item \textbf{(Minimum Diagonal Pivot Bound):} Every diagonal entry of $H_s$ satisfies $H_s[j,j] \ge 1$ for $s = 1$ and $H_s[j,j] \ge 2^{s-2} = D_s / 4$ for all $s \ge 2$.
+\item \textbf{(Explicit Column $\ell_1$-Norm and Buffer Bound):} For every column $0 \le j < r_s$,
+\begin{equation}\label{eq:col-bound-general}
+\|\col_j(D_s H_s^{-1})\|_1 \;\le\; 4\big(3 \cdot 2^{s-1} - 1\big)^s,
+\end{equation}
+and therefore
+\begin{equation}\label{eq:K-bound-general}
+\boxed{\; K(b,s) \;\le\; 4\big(3 \cdot 2^{s-1} - 1\big)^s \, (b^s - 1) \;<\; 4\big(3 \cdot 2^{s-1} - 1\big)^s \, b^s \;=\; 4\big(3 \cdot 2^{s-1} - 1\big)^s \, d_s. \;}
+\end{equation}
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(a) Let $M := D_s H_s^{-1} \in \Q^{r_s \times r_s}$. By definition of $E = \binom{I_{r_s}}{-\mathbf{1}_{r_s}^T}$, the first $r_s$ rows of $D_s E H_s^{-1}$ are the rows of $M$, and the bottom row (row $r_s$) is $-\sum_{i=0}^{r_s-1} \row_i(M)$. For each $0 \le i < r_s$, $\|\row_i(M)\|_1 \le \sum_{i'=0}^{r_s-1} \|\row_{i'}(M)\|_1$ since norms are nonnegative. For the bottom row, the triangle inequality in each column $j$ gives
+\[
+\|\row_{r_s}(D_s E H_s^{-1})\|_1 \;=\; \sum_{j=0}^{r_s-1} \left|\sum_{i=0}^{r_s-1} M_{i,j}\right| \;\le\; \sum_{j=0}^{r_s-1} \sum_{i=0}^{r_s-1} |M_{i,j}| \;=\; \sum_{i=0}^{r_s-1} \|\row_i(M)\|_1.
+\]
+Interchanging the finite sums over $i$ and $j$ (Fubini's theorem) yields \eqref{eq:fubini}. (This entire reduction is formally verified in Lean~4 in \texttt{Erdos1BufferTheorem.lean}.)
+
+(b) In Theorem \ref{thm:T2}, each step $s-1 \to s$ multiplies the internal lattice $\hat{H}_{s-1}$ by $2$ and adjoins $\hat{v}_{s-1}$. Because $\mathbf{1}_{d_{s-1}}^T \hat{H}_{s-1} = 0$ whereas $\mathbf{1}_{d_{s-1}}^T \hat{v}_{s-1} = 3^{s-1}$ is odd, the greatest common divisor of the coordinate sum of any lattice vector in $2\hat{H}_{s-1}$ ($0$) and $\hat{v}_{s-1}$ ($3^{s-1}$) has no factors of $2$. At $s = 1$, $\min_j H_1[j,j] = 1$; at $s = 2$, adjoining $\hat{v}_1 = (0,\dots,0,1,2)^T$ to $2\hat{H}_1$ introduces a single pivot of $1$ in the $(b-2)$-th position of $G_1$, while all subsequent levels $s \ge 3$ double $G_{s-2}$ in the lower sub-blocks by Theorem \ref{thm:T2}(d). Hence $\min_j H_s[j,j] = 2^{s-2} = D_s/4$ for all $s \ge 2$.
+
+(c) Fix any column $0 \le j < r_s$, and let $S_j = \supp(\col_j(H_s^{-1})) = \supp(\col_j(H_s))$. By Theorem \ref{thm:T3}, $|S_j| \le N_s = 3 \cdot 2^{s-1} - 1$. For $i \in S_j$, back-substitution gives $(H_s^{-1})_{j,j} = 1/H_s[j,j]$ and, for $i < j$,
+\[
+(H_s^{-1})_{i,j} \;=\; -\sum_{\substack{k \in S_j \\ i < k \le j}} \frac{H_s[i,k]}{H_s[i,i]} (H_s^{-1})_{k,j}.
+\]
+Because $H_s$ is in canonical Hermite normal form, $0 \le H_s[i,k] < H_s[i,i]$ for all $i < k$, so $0 \le \frac{H_s[i,k]}{H_s[i,i]} < 1$. Expanding $(H_s^{-1})_{i,j}$ over directed paths $i = v_0 \to v_1 \to \cdots \to v_L = j$ in $\DAG(H_s)|_{S_j}$, Theorem \ref{thm:T4} ensures that every path has length $0 \le L \le s$, and each step has weight strictly less than $1$. By part (b), $\frac{D_s}{H_s[j,j]} \le 4$. Since the total number of directed paths in $\DAG(H_s)|_{S_j}$ ending at $j$ of length at most $s$ is bounded by $\sum_{L=0}^s (|S_j|-1)^L \binom{s}{L} = |S_j|^s \le N_s^s$, we obtain
+\[
+\|\col_j(D_s H_s^{-1})\|_1 \;\le\; \frac{D_s}{H_s[j,j]} N_s^s \;\le\; 4\big(3 \cdot 2^{s-1} - 1\big)^s,
+\]
+and \eqref{eq:K-bound-general} follows immediately from \eqref{eq:fubini}.
+\end{proof}
+
+\section{The Non-Recursive Wavelet Block-Sum Inverse}
+
+In \cite{Toledo26} (\S 7), Toledo also asked whether one can construct an alternative recursive basis of $\Lambda_s$ whose inverse has a direct analytic formula. Using the orthogonality between the zero-sum internal lattice ($\mathbf{1}_{d_{s-1}}^T \hat{H}_{s-1} = 0$) and the shift vector (whose coordinate sum is $3^{s-1}$), we obtain a \textbf{1-step non-recursive closed-form inverse} for the natural wavelet basis of $D_s \Lambda_s$:
+
+\begin{theorem}[1-Step Closed-Form Wavelet Inverse]\label{thm:T7}
+Define the recursive wavelet basis $\hat{B}_s^{\mathrm{wave}} \in \Z^{d_s \times r_s}$ of the lattice $D_s \Lambda_s$ by setting $\hat{B}_1^{\mathrm{wave}} := E_1 H_1$ and, for $s \ge 2$,
+\[
+\hat{B}_s^{\mathrm{wave}} \;:=\; \big(I_b \otimes 2 \hat{B}_{s-1}^{\mathrm{wave}} \;\big|\; \hat{B}_1^{\mathrm{wave}} \otimes \hat{v}_{s-1}\big).
+\]
+Index the $r_s = b^s - 1$ columns of $\hat{B}_s^{\mathrm{wave}}$ by multiscale pairs $(u, c)$, where $0 \le \ell < s$, $u \in \{0, \dots, b-1\}^\ell$ is a $b$-ary prefix of length $\ell$, and $c \in \{0, \dots, b-2\}$. For any vector $y \in \R^{d_s}$ with $\mathbf{1}_{d_s}^T y = 0$, let $\Sigma_y(u, m)$ denote the sum of the coordinates of $y$ in the $b$-ary subtree with prefix $(u, m) \in \{0, \dots, b-1\}^{\ell+1}$. Then at the top scale ($\ell = 0$), the shift coordinates $x_{(\varnothing, c)}$ are given directly by
+\begin{equation}\label{eq:wavelet-inv}
+\boxed{\; x_{(\varnothing, c)} \;=\; \frac{1}{3^{s-1}} \sum_{m=0}^{b-2} (H_1^{-1})_{c,m} \, \Sigma_y(m), \;}
+\end{equation}
+and for each $1 \le \ell < s$, applying the subtree-sum operator $\Sigma(u, m)$ annihilates all finer scales $\ell' > \ell$ identically, determining $x_{(u, c)}$ in closed form via $H_1^{-1}$ from Theorem \ref{thm:T1}(c).
+\end{theorem}
+
+\begin{proof}
+Write $y = \sum_{m=0}^{b-1} e_m \otimes (2 \hat{B}_{s-1}^{\mathrm{wave}} x^{(m)}) + (\hat{B}_1^{\mathrm{wave}} x^{(\varnothing)}) \otimes \hat{v}_{s-1}$. Multiplying on the left by $I_b \otimes \mathbf{1}_{d_{s-1}}^T$ annihilates $2 \hat{B}_{s-1}^{\mathrm{wave}} x^{(m)}$ in every block $m$ (since $\mathbf{1}_{d_{s-1}}^T \hat{B}_{s-1}^{\mathrm{wave}} = 0$) and multiplies $\hat{v}_{s-1}$ by $\mathbf{1}_{d_{s-1}}^T \hat{v}_{s-1} = 3^{s-1}$, leaving
+\[
+\big(\Sigma_y(0), \dots, \Sigma_y(b-1)\big)^T \;=\; 3^{s-1} \hat{B}_1^{\mathrm{wave}} x^{(\varnothing)} \;=\; 3^{s-1} E_1 H_1 x^{(\varnothing)},
+\]
+from which \eqref{eq:wavelet-inv} follows by multiplying the first $b-1$ components by $3^{-(s-1)} H_1^{-1}$. Repeating the exact same projection on each residual block $y^{(m)} - (\hat{B}_1^{\mathrm{wave}} x^{(\varnothing)})_m \hat{v}_{s-1}$ yields all multiscale coordinates $x_{(u,c)}$.
+\end{proof}
+
+\section{Unconditional Effective Asymptotic Bound and Verification}
+
+Substituting Theorem \ref{thm:T6} into Toledo's Proposition 6 (\cite{Toledo26}, \S 3--\S 4) immediately establishes the unconditional effective asymptotic bound for Erd\H{o}s Problem \#1:
+
+\begin{corollary}[Unconditional Effective Asymptotic Upper Bound for Erd\H{o}s Problem \#1]\label{cor:asymptotic}
+For all odd $b \ge 3$ and $s \ge 1$, the binary bit-length of the perturbation buffer satisfies
+\[
+\log_2 K(b,s) \;\le\; s \log_2 b + s \log_2\big(3 \cdot 2^{s-1} - 1\big) + 2 \;\le\; \log_2 d_s + s^2 + s + 2.
+\]
+In the asymptotic regime $\log b \asymp s \log s$ (where $\log_2 d_s = s \log_2 b \asymp s^2 \log s \gg s^2$), we have $\log_2 K(b,s) = (1 + o(1)) \log_2 d_s$. Choosing $k = \lceil \log_2(d_s(K(b,s) + 2^s)) \rceil + O(1)$ in Proposition 6 of \cite{Toledo26} unconditionally produces an explicit collision-free DSS set $A \subset \{1, \dots, N\}$ of size $n = |A|$ satisfying
+\[
+f(n) \;\le\; N \;\le\; \frac{2^n}{n^{c / \log\log n}}
+\]
+for an explicit absolute constant $c > 0$ and all sufficiently large $n$.
+\end{corollary}
+
+\subsection{Summary of Exact Rational and Formal Verification}
+
+Table \ref{tab:verification} summarizes the exact rational values of $K(b,s)$, the exact maximum column support $N_s = \max_j \nnz(\col_j(H_s^{-1}))$, the exact DAG depth $\depth(\DAG(H_s))$, the exact maximum column $\ell_1$-norm $\max_j \|\col_j(D_s H_s^{-1})\|_1$, and the analytic upper bound of Theorem \ref{thm:T6} across tested pairs $(b,s)$.
+
+\begin{table}[ht!]
+\centering
+\caption{Exact arbitrary-precision rational verification of Theorems \ref{thm:T1}--\ref{thm:T6} across $(b,s)$.}
+\label{tab:verification}
+\vspace{0.5em}
+\small
+\begin{tabular}{@{}ccccccc@{}}
+\toprule
+$(b,s)$ & $d_s = b^s$ & $N_s$ & $\depth$ & $\max_j \|\col_j(D_s H_s^{-1})\|_1$ & Exact $K(b,s)$ & Bound $4 N_s^s b^s$ \\
+\midrule
+$(3,1)$ & $3$   & $2$  & $1$ & $8/3 \approx 2.667$          & $10/3 \approx 3.333$     & $24$ \\
+$(5,1)$ & $5$   & $2$  & $1$ & $32/11 \approx 2.909$        & $60/11 \approx 5.455$    & $40$ \\
+$(7,1)$ & $7$   & $2$  & $1$ & $128/43 \approx 2.977$       & $306/43 \approx 7.116$   & $56$ \\
+$(9,1)$ & $9$   & $2$  & $1$ & $512/171 \approx 2.994$      & $1602/171 \approx 9.368$ & $72$ \\
+\midrule
+$(3,2)$ & $9$   & $5$  & $2$ & $56/9 \approx 6.222$         & $152/9 \approx 16.889$   & $900$ \\
+$(5,2)$ & $25$  & $5$  & $2$ & $224/33 \approx 6.788$       & $1712/33 \approx 51.879$ & $2{,}500$ \\
+$(7,2)$ & $49$  & $5$  & $2$ & $896/129 \approx 6.946$      & $13736/129 \approx 106.48$ & $4{,}900$ \\
+$(9,2)$ & $81$  & $5$  & $2$ & $3584/513 \approx 6.986$     & $93272/513 \approx 181.82$ & $8{,}100$ \\
+\midrule
+$(3,3)$ & $27$  & $11$ & $3$ & $376/27 \approx 13.926$      & $2336/27 \approx 86.519$ & $143{,}748$ \\
+$(5,3)$ & $125$ & $11$ & $3$ & $1616/99 \approx 16.323$     & $46880/99 \approx 473.54$ & $665{,}500$ \\
+\midrule
+$(3,4)$ & $81$  & $23$ & $4$ & $2480/81 \approx 30.617$     & $35296/81 \approx 435.75$ & $90{,}668{,}244$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{thebibliography}{9}
+
+\bibitem{Erdos31}
+P.~Erd\H{o}s, \emph{Problems and results in additive number theory}, Colloque sur la Th\'eorie des Nombres, Bruxelles (1955), 127--137.
+
+\bibitem{DFX21}
+Q.~Dubroff, J.~Fox, and M.~W.~Xu, \emph{A note on the Erd\H{o}s distinct subset sums problem}, SIAM J.~Discrete Math.\ \textbf{35} (2021), no.~1, 322--324.
+
+\bibitem{Adamcz26}
+T.~Adamczewski et al., \emph{Formal disproof of Erd\H{o}s Problem \#1 in Lean 4}, GitHub repository \texttt{tadamcz/erdos1}, September 2026.
+
+\bibitem{Toledo26}
+C.~Toledo, \emph{Explicit Disproof of Erd\H{o}s Problem \#1 at Finite $n$}, Technical Report and Paper (\texttt{carlostoledo.co/reports/erdos1.html}), September 16, 2026.
+
+\end{thebibliography}
+
+\end{document}
